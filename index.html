@@ -178,3 +178,171 @@
 </script>
 </body>
 </html>
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Undertale Clone - Final Stand</title>
+    <style>
+        body { background-color: black; color: white; font-family: 'Courier New', Courier, monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
+        #game-container { width: 640px; }
+        #monster-sprite { height: 160px; display: flex; justify-content: center; align-items: center; font-size: 80px; margin-bottom: 20px; animation: bounce 2s infinite ease-in-out; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        #main-box { border: 4px solid white; padding: 0; height: 200px; width: 600px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
+        #typewriter-text { font-size: 24px; padding: 20px; line-height: 1.4; margin: 0; }
+        canvas { display: none; background: black; }
+        #ui-info { margin: 15px 0; font-size: 24px; display: flex; align-items: center; }
+        #hp-bar-bg { width: 100px; height: 20px; background: red; margin: 0 15px; }
+        #hp-bar-fg { width: 100%; height: 100%; background: #ffff00; }
+        #button-container { display: flex; justify-content: space-between; margin-top: 10px; }
+        .menu-btn { border: 2px solid #e27d3c; color: #e27d3c; padding: 10px 20px; font-size: 24px; width: 130px; text-align: center; }
+        .menu-btn.active { border-color: #ffff00; color: #ffff00; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M0 0 L20 10 L0 20 Z" fill="red"/></svg>') no-repeat 5px center; }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <div id="monster-sprite">💀</div>
+    <div id="main-box">
+        <p id="typewriter-text"></p>
+        <canvas id="gameCanvas"></canvas>
+    </div>
+    <div id="ui-info">
+        <span id="player-name">HUMAN</span><span style="margin-left: 20px;">LV 19</span>
+        <span style="margin-left: auto;">HP</span>
+        <div id="hp-bar-bg"><div id="hp-bar-fg"></div></div>
+        <span id="hp-text">20 / 20</span>
+    </div>
+    <div id="button-container">
+        <div class="menu-btn" id="btn-0">FIGHT</div>
+        <div class="menu-btn" id="btn-1">ACT</div>
+        <div class="menu-btn" id="btn-2">ITEM</div>
+        <div class="menu-btn" id="btn-3">MERCY</div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const dialogue = document.getElementById("typewriter-text");
+    const hpBar = document.getElementById("hp-bar-fg");
+    const hpText = document.getElementById("hp-text");
+
+    let state = "MENU", selectedBtn = 0, hp = 20, battleTimer = 0;
+    const heart = { x: 300, y: 100, size: 16, speed: 4, vy: 0, gravity: 0.25, jump: -5.5, onGround: false };
+    let obstacles = [], blasters = [], platforms = [];
+    const keys = {};
+
+    window.addEventListener("keydown", e => {
+        keys[e.code] = true;
+        if (state === "MENU") {
+            if (e.code === "ArrowLeft") selectedBtn = (selectedBtn + 3) % 4;
+            if (e.code === "ArrowRight") selectedBtn = (selectedBtn + 1) % 4;
+            if (e.code === "Z" || e.code === "Enter") startBattle();
+        }
+    });
+    window.addEventListener("keyup", e => keys[e.code] = false);
+
+    function startBattle() {
+        state = "BATTLE";
+        dialogue.style.display = "none";
+        canvas.style.display = "block";
+        canvas.width = 600; canvas.height = 200;
+        battleTimer = 600; obstacles = []; blasters = []; platforms = [];
+        heart.x = 300; heart.y = 150; heart.vy = 0;
+        // 足場を一つ追加
+        platforms.push({ x: 100, y: 120, w: 100, h: 10, vx: 2 });
+    }
+
+    function spawnAttack() {
+        // 1. 下を流れる骨
+        if (battleTimer % 60 === 0) obstacles.push({ x: 600, y: 160, w: 20, h: 40, vx: -4 });
+        
+        // 2. ガスターブラスター (予告線あり)
+        if (battleTimer % 150 === 100) {
+            blasters.push({ x: 0, y: Math.random() * 150, w: 600, h: 30, timer: 40, active: false });
+        }
+    }
+
+    function update() {
+        if (state === "MENU") {
+            for (let i = 0; i < 4; i++) document.getElementById(`btn-${i}`).classList.toggle("active", i === selectedBtn);
+        }
+
+        if (state === "BATTLE") {
+            if (keys["ArrowLeft"] && heart.x > 0) heart.x -= heart.speed;
+            if (keys["ArrowRight"] && heart.x < canvas.width - heart.size) heart.x += heart.speed;
+
+            heart.vy += heart.gravity;
+            heart.y += heart.vy;
+            heart.onGround = false;
+
+            // 地面判定
+            if (heart.y >= canvas.height - heart.size) {
+                heart.y = canvas.height - heart.size; heart.vy = 0; heart.onGround = true;
+            }
+
+            // 足場判定
+            platforms.forEach(p => {
+                p.x += p.vx;
+                if (p.x < 0 || p.x + p.w > canvas.width) p.vx *= -1;
+                if (heart.vy >= 0 && heart.x + heart.size > p.x && heart.x < p.x + p.w &&
+                    heart.y + heart.size >= p.y && heart.y + heart.size <= p.y + 10) {
+                    heart.y = p.y - heart.size; heart.vy = 0; heart.onGround = true;
+                    heart.x += p.vx; // 足場と一緒に動く
+                }
+            });
+
+            if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
+
+            spawnAttack();
+
+            // 障害物更新
+            obstacles.forEach((o, i) => {
+                o.x += o.vx;
+                if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) hp -= 0.1;
+            });
+
+            // ブラスター更新
+            blasters.forEach((b, i) => {
+                b.timer--;
+                if (b.timer <= 0) {
+                    b.active = true;
+                    if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp -= 0.5;
+                    if (b.timer < -20) blasters.splice(i, 1);
+                }
+            });
+
+            hpBar.style.width = (hp / 20 * 100) + "%";
+            hpText.innerText = `${Math.ceil(hp)} / 20`;
+            battleTimer--;
+            if (battleTimer <= 0) { state = "MENU"; canvas.style.display = "none"; dialogue.style.display = "block"; dialogue.innerHTML = "* You survived the madness."; }
+            if (hp <= 0) location.reload();
+        }
+    }
+
+    function draw() {
+        if (state === "BATTLE") {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // 足場
+            ctx.fillStyle = "#00ff00";
+            platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+            // ブラスター予告/発射
+            blasters.forEach(b => {
+                ctx.fillStyle = b.active ? "white" : "rgba(255, 0, 0, 0.3)";
+                ctx.fillRect(b.x, b.y, b.w, b.h);
+            });
+            // 骨
+            ctx.fillStyle = "white";
+            obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
+            // ハート
+            ctx.fillStyle = "#003cff";
+            ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
+        }
+        requestAnimationFrame(() => { update(); draw(); });
+    }
+    dialogue.innerHTML = "* Do you want to have a bad time?";
+    draw();
+</script>
+</body>
+</html>
