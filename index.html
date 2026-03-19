@@ -2,121 +2,156 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - Level Up Edition</title>
+    <title>Undertale Clone - Character Update</title>
     <style>
         body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
         #game-container { width: 640px; }
-        #main-box { border: 4px solid white; height: 240px; width: 600px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
+        
+        /* 敵キャラクターの表示エリア */
+        #enemy-container {
+            height: 180px;
+            display: flex;
+            justify-content: center;
+            align-items: flex-end;
+            padding-bottom: 10px;
+            position: relative;
+        }
+
+        /* 敵のドット絵（CSSと文字で構成） */
+        #enemy-sprite {
+            font-size: 80px;
+            position: relative;
+            transition: transform 0.1s;
+        }
+
+        /* 吹き出し */
+        #bubble {
+            position: absolute;
+            background: white;
+            color: black;
+            border-radius: 15px;
+            padding: 10px;
+            width: 120px;
+            left: 380px;
+            bottom: 100px;
+            font-size: 16px;
+            font-weight: bold;
+            display: none;
+        }
+        #bubble::after {
+            content: '';
+            position: absolute;
+            left: -10px;
+            top: 20px;
+            border-width: 10px 10px 10px 0;
+            border-style: solid;
+            border-color: transparent white transparent transparent;
+        }
+
+        #main-box { border: 4px solid white; height: 200px; width: 500px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
         canvas { background: black; display: block; }
-        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; font-weight: bold; }
-        #hp-bar { width: 100px; height: 20px; background: red; margin: 0 15px; position: relative; border: 1px solid #fff; }
-        #hp-fill { height: 100%; background: #ff0; width: 100%; transition: width 0.1s; }
-        .level-badge { color: #0cf; margin-left: 20px; }
-        .msg { font-size: 20px; color: #fff; text-align: center; margin-top: 10px; height: 30px; }
+        
+        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: center; }
+        #hp-bar { width: 100px; height: 20px; background: red; margin: 0 15px; border: 2px solid white; }
+        #hp-fill { height: 100%; background: #ff0; width: 100%; }
+        
+        .msg { font-size: 18px; color: white; text-align: center; margin-top: 10px; min-height: 25px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
+    <div id="enemy-container">
+        <div id="enemy-sprite">💀</div>
+        <div id="bubble" id="enemy-speech">HEHEHE!</div>
+    </div>
+
     <div id="main-box">
         <canvas id="gameCanvas"></canvas>
     </div>
+
     <div id="ui">
-        <span>PLAYER</span>
-        <span class="level-badge" id="level-text">LEVEL 1</span>
-        <span style="margin-left:auto">HP</span>
+        <span>LV 19</span>
         <div id="hp-bar"><div id="hp-fill"></div></div>
         <span id="hp-text">20 / 20</span>
+        <span id="level-badge" style="color: #0cf; margin-left: 20px;">PHASE 1</span>
     </div>
-    <p id="status-msg" class="msg">* The battle begins.</p>
+    <p id="status-msg" class="msg">* Smells like funny bones.</p>
 </div>
 
 <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = 600; canvas.height = 240;
+    canvas.width = 500; canvas.height = 200;
 
     const hpFill = document.getElementById("hp-fill");
     const hpText = document.getElementById("hp-text");
-    const levelDisplay = document.getElementById("level-text");
+    const sprite = document.getElementById("enemy-sprite");
+    const bubble = document.getElementById("bubble");
+    const levelBadge = document.getElementById("level-badge");
     const statusMsg = document.getElementById("status-msg");
 
     let hp = 20;
     let frame = 0;
-    let currentLevel = 1;
+    let phase = 1;
     const keys = {};
 
-    // ハート物理
-    const heart = {
-        x: 300, y: 200, size: 16,
-        vx: 0, vy: 0,
-        speed: 4.5,
-        gravity: 0.25,
-        jump: -6.0,
-        onGround: false
-    };
-
+    const heart = { x: 242, y: 100, size: 16, vx: 0, vy: 0, speed: 4, gravity: 0.25, jump: -5.5, onGround: false };
     let obstacles = [];
     let blasters = [];
 
     window.addEventListener("keydown", e => keys[e.code] = true);
     window.addEventListener("keyup", e => keys[e.code] = false);
 
-    function updateLevel() {
-        // 500フレームごとにレベルアップ（約8秒）
-        if (frame > 0 && frame % 500 === 0 && currentLevel < 5) {
-            currentLevel++;
-            levelDisplay.innerText = `LEVEL ${currentLevel}`;
-            
-            // レベルアップ時の演出
-            if (currentLevel === 2) statusMsg.innerText = "* Gravity is increasing...";
-            if (currentLevel === 3) statusMsg.innerText = "* The bones are getting faster!";
-            if (currentLevel === 4) statusMsg.innerText = "* BLASTERS INCOMING!!";
-            if (currentLevel === 5) {
-                statusMsg.innerText = "* THIS IS THE END.";
-                statusMsg.style.color = "red";
+    // キャラクターのアニメーション（浮遊感）
+    function animateEnemy() {
+        const y = Math.sin(frame * 0.05) * 10;
+        const x = Math.cos(frame * 0.02) * 5;
+        sprite.style.transform = `translate(${x}px, ${y}px)`;
+    }
+
+    // 敵のセリフ表示
+    function speak(text) {
+        bubble.innerText = text;
+        bubble.style.display = "block";
+        setTimeout(() => { bubble.style.display = "none"; }, 2000);
+    }
+
+    function updatePhase() {
+        if (frame > 0 && frame % 600 === 0 && phase < 3) {
+            phase++;
+            levelBadge.innerText = `PHASE ${phase}`;
+            if (phase === 2) {
+                speak("STILL ALIVE?");
+                statusMsg.innerText = "* The air is getting colder.";
+            }
+            if (phase === 3) {
+                speak("READY?");
+                statusMsg.innerText = "* Darker, yet darker.";
             }
         }
     }
 
     function spawnAttack() {
-        // LEVEL 1: 基本の骨（ゆっくり）
-        if (frame % 60 === 0) {
-            const speed = -(3 + currentLevel); // レベルに応じて速度アップ
-            obstacles.push({ x: 600, y: 190, w: 15, h: 50, vx: speed, type: 'bone' });
+        // フェーズに応じた攻撃
+        if (frame % (70 - phase * 10) === 0) {
+            obstacles.push({ x: 500, y: 150, w: 15, h: 50, vx: -(4 + phase), type: 'bone' });
         }
-
-        // LEVEL 2以上: 天井からの骨も追加
-        if (currentLevel >= 2 && frame % 90 === 45) {
-            obstacles.push({ x: 600, y: 0, w: 15, h: 70, vx: -(2 + currentLevel), type: 'bone' });
+        if (phase >= 2 && frame % 120 === 0) {
+            blasters.push({ x: 0, y: heart.y - 15, w: 500, h: 30, warning: 40, active: 15, state: 'warning' });
         }
-
-        // LEVEL 3以上: 重力強化
-        if (currentLevel >= 3) {
-            heart.gravity = 0.35;
-            heart.jump = -7.5;
-        }
-
-        // LEVEL 4以上: ブラスター出現
-        if (currentLevel >= 4 && frame % 100 === 0) {
-            blasters.push({
-                x: 0, y: Math.random() * 160, 
-                w: 600, h: 35, 
-                warning: 30, active: 10, state: 'warning'
-            });
-        }
-
-        // LEVEL 5: 地獄モード（全同時攻撃 ＋ 弾幕高密度化）
-        if (currentLevel === 5 && frame % 30 === 0) {
-             obstacles.push({ x: 0, y: 190, w: 15, h: 40, vx: 5, type: 'bone' }); // 逆方向からも！
+        if (phase >= 3 && frame % 150 === 0) {
+            obstacles.push({ x: 500, y: 0, w: 15, h: 60, vx: -5, type: 'bone' });
         }
     }
 
     function update() {
         frame++;
-        updateLevel();
+        animateEnemy();
+        updatePhase();
+        spawnAttack();
 
-        // ハート移動
+        // ハート移動 & 重力
         if (keys["ArrowLeft"]) heart.x -= heart.speed;
         if (keys["ArrowRight"]) heart.x += heart.speed;
         heart.vy += heart.gravity;
@@ -127,46 +162,43 @@
         } else { heart.onGround = false; }
         
         if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
-        if (!keys["ArrowUp"] && heart.vy < 0) heart.vy *= 0.8;
-
         heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
 
-        spawnAttack();
-
-        // 衝突判定：骨
+        // 障害物判定
         obstacles.forEach((o, i) => {
             o.x += o.vx;
             if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) {
-                hp -= 0.2;
+                takeDamage(0.2);
             }
-            if (o.x < -100 || o.x > 700) obstacles.splice(i, 1);
+            if (o.x < -20) obstacles.splice(i, 1);
         });
 
-        // 衝突判定：ブラスター
         blasters.forEach((b, i) => {
             if (b.state === 'warning') {
                 b.warning--;
                 if (b.warning <= 0) b.state = 'active';
             } else {
                 b.active--;
-                if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp -= 0.6;
-                if (b.active <= 0) blasters.splice(i, i);
+                if (heart.y + heart.size > b.y && heart.y < b.y + b.h) takeDamage(0.8);
+                if (b.active <= 0) blasters.splice(i, 1);
             }
         });
 
-        // UI
         hpFill.style.width = (hp / 20 * 100) + "%";
         hpText.innerText = `${Math.ceil(hp)} / 20`;
+        if (hp <= 0) location.reload();
+    }
 
-        if (hp <= 0) {
-            alert("GAME OVER. RESTARTING AT LEVEL 1...");
-            location.reload();
-        }
+    function takeDamage(amt) {
+        hp -= amt;
+        // ダメージ時に敵が笑う演出
+        if (frame % 10 === 0) sprite.innerText = "😈";
+        setTimeout(() => { sprite.innerText = "💀"; }, 500);
     }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
+        
         // 骨
         ctx.fillStyle = "white";
         obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
@@ -174,15 +206,14 @@
         // ブラスター
         blasters.forEach(b => {
             if (b.state === 'warning') {
-                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                ctx.strokeStyle = "red";
                 ctx.setLineDash([5, 5]);
-                ctx.strokeRect(0, b.y, 600, b.h);
-                ctx.setLineDash([]);
+                ctx.strokeRect(0, b.y, 500, b.h);
             } else {
                 ctx.fillStyle = "white";
-                ctx.fillRect(0, b.y, 600, b.h);
+                ctx.fillRect(0, b.y, 500, b.h);
                 ctx.fillStyle = "#4af";
-                ctx.fillRect(0, b.y + 5, 600, b.h - 10);
+                ctx.fillRect(0, b.y + 5, 500, b.h - 10);
             }
         });
 
