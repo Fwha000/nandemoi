@@ -2,19 +2,19 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - Dynamic Levels</title>
+    <title>Undertale Clone - Phase 6: The Zenith</title>
     <style>
         body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
         #game-container { width: 640px; }
         #enemy-container { height: 140px; display: flex; justify-content: center; align-items: flex-end; position: relative; }
-        #enemy-sprite { font-size: 80px; transition: transform 0.1s; }
+        #enemy-sprite { font-size: 80px; transition: transform 0.1s; text-shadow: 0 0 10px rgba(255,255,255,0.5); }
         #main-box { border: 4px solid white; height: 260px; width: 500px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
         canvas { background: black; display: block; }
         #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 50px; }
         #hp-bar { width: 100px; height: 20px; background: red; border: 2px solid white; }
         #hp-fill { height: 100%; background: #ff0; width: 100%; }
-        .phase-text { color: #0cf; font-weight: bold; }
-        #msg { text-align: center; color: #aaa; margin-top: 10px; height: 20px; }
+        .phase-text { color: #f0f; font-weight: bold; text-transform: uppercase; }
+        #msg { text-align: center; color: #fff; margin-top: 10px; height: 20px; font-style: italic; }
     </style>
 </head>
 <body>
@@ -30,7 +30,7 @@
             <span id="hp-text" style="margin-left:10px">20/20</span>
         </div>
     </div>
-    <p id="msg">* Stay determined.</p>
+    <p id="msg">* You feel your sins crawling on your back.</p>
 </div>
 
 <script>
@@ -43,22 +43,12 @@
     let phase = 1;
     const keys = {};
 
-    // ジャンプ力と制御を大幅に強化
-    const heart = { 
-        x: 242, y: 220, size: 16, 
-        vx: 0, vy: 0, 
-        speed: 4.5, 
-        gravity: 0.22, 
-        jump: -8.0, 
-        onGround: false 
-    };
-
+    const heart = { x: 242, y: 220, size: 16, vx: 0, vy: 0, speed: 4.5, gravity: 0.22, jump: -8.0, onGround: false };
     let obstacles = [];
     let blasters = [];
-    // 足場を階段状に配置
     let platforms = [
-        { x: 50, y: 180, w: 120, h: 10, vx: 1 },
-        { x: 300, y: 120, w: 120, h: 10, vx: -1 }
+        { x: 50, y: 180, w: 120, h: 10, vx: 1.2 },
+        { x: 300, y: 110, w: 120, h: 10, vx: -1.2 }
     ];
 
     window.addEventListener("keydown", e => keys[e.code] = true);
@@ -67,17 +57,22 @@
     function update() {
         frame++;
 
-        // フェーズ管理（400フレームごとにアップ）
-        if (frame > 0 && frame % 400 === 0 && phase < 4) {
+        // フェーズ更新 (450フレームごと)
+        if (frame > 0 && frame % 450 === 0 && phase < 6) {
             phase++;
-            document.getElementById("phase-display").innerText = `PHASE ${phase}`;
-            document.getElementById("msg").innerText = phase === 4 ? "* NO ESCAPE." : "* Things are getting intense.";
+            const pd = document.getElementById("phase-display");
+            pd.innerText = `PHASE ${phase}`;
+            const msg = document.getElementById("msg");
+            
+            if(phase === 5) { pd.style.color = "#f00"; msg.innerText = "* The ground is no longer safe."; }
+            if(phase === 6) { pd.style.color = "#fff"; pd.classList.add("blink"); msg.innerText = "* This is your LAST chance."; }
         }
 
-        // キャラアニメ
-        document.getElementById("enemy-sprite").style.transform = `translateY(${Math.sin(frame*0.05)*10}px)`;
+        // 敵のアニメーション（フェーズが上がると激しくなる）
+        const intensity = phase * 0.05;
+        document.getElementById("enemy-sprite").style.transform = `translate(${Math.cos(frame*intensity)*5}px, ${Math.sin(frame*intensity)*15}px)`;
 
-        // ハート移動
+        // ハート移動 & 重力
         if (keys["ArrowLeft"]) heart.x -= heart.speed;
         if (keys["ArrowRight"]) heart.x += heart.speed;
         heart.vy += heart.gravity;
@@ -94,41 +89,35 @@
             }
         });
 
-        // 強化ジャンプ
         if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
-        if (!keys["ArrowUp"] && heart.vy < -3) heart.vy = -3; // 離すとふわっと止まる
-
+        if (!keys["ArrowUp"] && heart.vy < -3) heart.vy = -3;
         heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
 
-        // --- PHASEごとの攻撃パターン ---
+        // --- PHASE別の追加攻撃 ---
         
-        // PHASE 1: 基本のゆっくりな骨
-        if (frame % 100 === 0) {
-            obstacles.push({ x: 500, y: 210, w: 20, h: 50, vx: -3 });
+        // Phase 1-4 (既存の攻撃)
+        if (frame % 100 === 0) obstacles.push({ x: 500, y: 210, w: 20, h: 50, vx: -3 - (phase*0.5) });
+        if (phase >= 2 && frame % 120 === 60) obstacles.push({ x: 500, y: 0, w: 20, h: 80, vx: -4 });
+        if (phase >= 3 && frame % 180 === 0) blasters.push({ x: 0, y: Math.random()*180, w: 500, h: 30, warning: 45, active: 15, state: 'warning' });
+
+        // PHASE 5: 下からの突き上げ骨 (地面に居続けると死ぬ)
+        if (phase >= 5 && frame % 40 === 0) {
+            obstacles.push({ x: Math.random() * 480, y: 240, w: 20, h: 40, vx: 0, vy: -6, type: 'spike' });
         }
 
-        // PHASE 2: 上下からの挟み撃ち
-        if (phase >= 2 && frame % 120 === 60) {
-            obstacles.push({ x: 500, y: 0, w: 20, h: 80, vx: -4 });
-        }
-
-        // PHASE 3: ブラスター予告
-        if (phase >= 3 && frame % 180 === 0) {
-            blasters.push({ x: 0, y: Math.random()*180, w: 500, h: 35, warning: 45, active: 15, state: 'warning' });
-        }
-
-        // PHASE 4: 高速弾幕モード
-        if (phase >= 4 && frame % 50 === 0) {
-            obstacles.push({ x: 500, y: 190, w: 15, h: 30, vx: -6 });
+        // PHASE 6: 画面半分を覆う「ギガ・ブラスター」
+        if (phase >= 6 && frame % 200 === 0) {
+            const side = Math.random() > 0.5 ? 0 : 130;
+            blasters.push({ x: 0, y: side, w: 500, h: 130, warning: 60, active: 30, state: 'warning', color: 'cyan' });
         }
 
         // 衝突判定
         obstacles.forEach((o, i) => {
-            o.x += o.vx;
+            if(o.type === 'spike') o.y += o.vy; else o.x += o.vx;
             if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) {
-                hp = Math.max(0, hp - 0.2); // ダメージは優しめ
+                hp = Math.max(0, hp - 0.2);
             }
-            if (o.x < -30) obstacles.splice(i, 1);
+            if (o.x < -30 || o.y < -50) obstacles.splice(i, 1);
         });
 
         blasters.forEach((b, i) => {
@@ -136,11 +125,10 @@
                 if (--b.warning <= 0) b.state = 'active';
             } else {
                 if (--b.active <= 0) blasters.splice(i, 1);
-                else if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp = Math.max(0, hp - 0.5);
+                else if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp = Math.max(0, hp - 0.4);
             }
         });
 
-        // UI
         document.getElementById("hp-fill").style.width = (hp / 20 * 100) + "%";
         document.getElementById("hp-text").innerText = `${Math.ceil(hp)}/20`;
         if (hp <= 0) location.reload();
@@ -151,8 +139,13 @@
         ctx.fillStyle = "#0f0"; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
         ctx.fillStyle = "white"; obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
         blasters.forEach(b => {
-            if (b.state === 'warning') { ctx.strokeStyle = "red"; ctx.setLineDash([5,5]); ctx.strokeRect(0, b.y, 500, b.h); }
-            else { ctx.fillStyle = "white"; ctx.setLineDash([]); ctx.fillRect(0, b.y, 500, b.h); }
+            if (b.state === 'warning') { 
+                ctx.strokeStyle = b.color === 'cyan' ? "#0ff" : "red"; 
+                ctx.setLineDash([5,5]); ctx.strokeRect(0, b.y, 500, b.h); 
+            } else { 
+                ctx.fillStyle = b.color === 'cyan' ? "#0ff" : "white"; 
+                ctx.setLineDash([]); ctx.fillRect(0, b.y, 500, b.h); 
+            }
         });
         ctx.fillStyle = "#2e51ff"; ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
         requestAnimationFrame(() => { update(); draw(); });
