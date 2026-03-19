@@ -2,57 +2,44 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - Game Over Edition</title>
+    <title>Undertale - Sans Final Stand</title>
     <style>
         body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
-        #game-container { width: 640px; }
-        #enemy-container { height: 140px; display: flex; justify-content: center; align-items: flex-end; position: relative; }
-        #enemy-sprite { font-size: 80px; transition: transform 0.1s; }
+        #game-container { width: 640px; position: relative; }
+        #enemy-sprite { font-size: 80px; text-align: center; margin-bottom: 10px; transition: transform 0.1s; }
         #main-box { border: 4px solid white; height: 260px; width: 500px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
         canvas { background: black; display: block; }
-        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 50px; }
+        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: space-around; }
         #hp-bar { width: 100px; height: 20px; background: red; border: 2px solid white; }
         #hp-fill { height: 100%; background: #ff0; width: 100%; }
-        .phase-text { color: #f0f; font-weight: bold; }
-        #msg { text-align: center; color: #fff; margin-top: 10px; height: 20px; font-style: italic; }
-
-        /* ゲームオーバー画面のオーバーレイ */
-        #game-over-screen {
-            display: none;
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.8);
-            color: #ff0000;
-            font-size: 60px;
-            font-weight: bold;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            z-index: 100;
+        #timer-ui { color: #ff0; font-weight: bold; }
+        
+        /* 画面オーバーレイ */
+        .overlay {
+            display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85); flex-direction: column; justify-content: center; align-items: center; z-index: 100;
         }
-        #retry-msg { font-size: 20px; color: white; margin-top: 20px; }
+        #game-over { color: #f00; font-size: 50px; }
+        #game-clear { color: #0f0; font-size: 50px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="enemy-container"><div id="enemy-sprite">💀</div></div>
+    <div id="enemy-sprite">💀</div>
     <div id="main-box">
         <canvas id="gameCanvas"></canvas>
-        <div id="game-over-screen">
-            GAME OVER
-            <div id="retry-msg">Press R to Retry</div>
-        </div>
+        <div id="game-over" class="overlay">GAME OVER<div style="font-size:20px; color:white; margin-top:10px;">Press R to Retry</div></div>
+        <div id="game-clear" class="overlay">YOU SURVIVED!<div style="font-size:20px; color:white; margin-top:10px;">You spared the skeleton.</div></div>
     </div>
     <div id="ui">
-        <span class="phase-text" id="phase-display">PHASE 1</span>
+        <div id="timer-ui">TIME: 60</div>
         <div style="display:flex; align-items:center;">
             <span>HP</span>
             <div id="hp-bar"><div id="hp-fill"></div></div>
-            <span id="hp-text" style="margin-left:10px">20/20</span>
+            <span id="hp-text">20/20</span>
         </div>
     </div>
-    <p id="msg">* Stay determined.</p>
 </div>
 
 <script>
@@ -60,45 +47,67 @@
     const ctx = canvas.getContext("2d");
     canvas.width = 500; canvas.height = 260;
 
-    let hp = 20;
-    let frame = 0;
-    let phase = 1;
-    let isGameOver = false;
+    let hp = 20, frame = 0, isEnded = false;
+    let timeLeft = 60; // 60秒耐えたらクリア
     const keys = {};
 
     const heart = { x: 242, y: 220, size: 16, vx: 0, vy: 0, speed: 4.5, gravity: 0.22, jump: -8.0, onGround: false };
-    let obstacles = [];
-    let blasters = [];
-    let platforms = [
-        { x: 50, y: 180, w: 120, h: 10, vx: 1.2 },
-        { x: 300, y: 110, w: 120, h: 10, vx: -1.2 }
+    let obstacles = [], blasters = [], platforms = [
+        { x: 50, y: 180, w: 120, h: 10, vx: 1.5 },
+        { x: 300, y: 110, w: 120, h: 10, vx: -1.5 }
     ];
 
     window.addEventListener("keydown", e => {
         keys[e.code] = true;
-        if (isGameOver && e.code === "KeyR") location.reload();
+        if (isEnded && e.code === "KeyR") location.reload();
     });
     window.addEventListener("keyup", e => keys[e.code] = false);
 
+    // --- 叩きつけ攻撃 (Slam) ---
+    function slamHeart() {
+        if (isEnded) return;
+        const directions = ["UP", "DOWN", "LEFT", "RIGHT"];
+        const dir = directions[Math.floor(Math.random() * directions.length)];
+        
+        // 敵のグラフィックを動かす
+        const sprite = document.getElementById("enemy-sprite");
+        
+        if (dir === "UP") { heart.vy = -15; sprite.style.transform = "translateY(-30px)"; }
+        if (dir === "DOWN") { heart.vy = 15; sprite.style.transform = "translateY(30px)"; }
+        if (dir === "LEFT") { heart.vx = -15; sprite.style.transform = "translateX(-30px)"; }
+        if (dir === "RIGHT") { heart.vx = 15; sprite.style.transform = "translateX(30px)"; }
+
+        setTimeout(() => sprite.style.transform = "translate(0,0)", 200);
+    }
+
     function update() {
-        if (isGameOver) return; // ゲームオーバー時は更新停止
+        if (isEnded) return;
 
         frame++;
-
-        // フェーズ更新
-        if (frame > 0 && frame % 450 === 0 && phase < 6) {
-            phase++;
-            document.getElementById("phase-display").innerText = `PHASE ${phase}`;
+        if (frame % 60 === 0 && timeLeft > 0) {
+            timeLeft--;
+            document.getElementById("timer-ui").innerText = `TIME: ${timeLeft}`;
+            if (timeLeft <= 0) { isEnded = true; document.getElementById("game-clear").style.display = "flex"; }
         }
 
-        // ハート移動 & 重力
-        if (keys["ArrowLeft"]) heart.x -= heart.speed;
-        if (keys["ArrowRight"]) heart.x += heart.speed;
+        // 叩きつけ発動 (5秒に1回)
+        if (frame % 300 === 0) slamHeart();
+
+        // ハート移動
+        if (keys["ArrowLeft"]) heart.vx -= 0.5;
+        if (keys["ArrowRight"]) heart.vx += 0.5;
+        heart.vx *= 0.9; // 摩擦
+        heart.x += heart.vx + (keys["ArrowLeft"] ? -heart.speed : keys["ArrowRight"] ? heart.speed : 0);
+        
         heart.vy += heart.gravity;
         heart.y += heart.vy;
         heart.onGround = false;
 
+        // 壁・地面判定
         if (heart.y > canvas.height - heart.size) { heart.y = canvas.height - heart.size; heart.vy = 0; heart.onGround = true; }
+        if (heart.y < 0) { heart.y = 0; heart.vy = 0; }
+        if (heart.x < 0) { heart.x = 0; heart.vx = 0; }
+        if (heart.x > canvas.width - heart.size) { heart.x = canvas.width - heart.size; heart.vx = 0; }
 
         platforms.forEach(p => {
             p.x += p.vx;
@@ -109,39 +118,27 @@
         });
 
         if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
-        if (!keys["ArrowUp"] && heart.vy < -3) heart.vy = -3;
         heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
 
-        // 攻撃生成
-        if (frame % 100 === 0) obstacles.push({ x: 500, y: 210, w: 20, h: 50, vx: -3 - (phase*0.5) });
-        if (phase >= 2 && frame % 120 === 60) obstacles.push({ x: 500, y: 0, w: 20, h: 80, vx: -4 });
-        if (phase >= 3 && frame % 180 === 0) blasters.push({ x: 0, y: Math.random()*180, w: 500, h: 30, warning: 45, active: 15, state: 'warning' });
-        if (phase >= 5 && frame % 40 === 0) obstacles.push({ x: Math.random() * 480, y: 240, w: 20, h: 40, vx: 0, vy: -6, type: 'spike' });
-        if (phase >= 6 && frame % 200 === 0) {
-            const side = Math.random() > 0.5 ? 0 : 130;
-            blasters.push({ x: 0, y: side, w: 500, h: 130, warning: 60, active: 30, state: 'warning', color: 'cyan' });
-        }
+        // 攻撃生成 (難易度は時間で微増)
+        const difficulty = 1 - (timeLeft / 60);
+        if (frame % Math.max(20, 80 - difficulty * 100) === 0) obstacles.push({ x: 500, y: 210, w: 15, h: 50, vx: -4 - difficulty * 4 });
+        if (frame % 150 === 0) blasters.push({ x: 0, y: Math.random()*180, w: 500, h: 30, warning: 40, active: 15, state: 'warning' });
 
-        // 衝突判定
+        // 当たり判定
         obstacles.forEach((o, i) => {
-            if(o.type === 'spike') o.y += o.vy; else o.x += o.vx;
-            if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) hp -= 0.2;
-            if (o.x < -30 || o.y < -50) obstacles.splice(i, 1);
+            o.x += o.vx;
+            if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) hp -= 0.5;
+            if (o.x < -30) obstacles.splice(i, 1);
         });
 
         blasters.forEach((b, i) => {
             if (b.state === 'warning') { if (--b.warning <= 0) b.state = 'active'; }
-            else { if (--b.active <= 0) blasters.splice(i, 1); else if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp -= 0.4; }
+            else { if (--b.active <= 0) blasters.splice(i, 1); else if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp -= 1; }
         });
 
-        // HPチェック（0になったら終了）
-        if (hp <= 0) {
-            hp = 0;
-            isGameOver = true;
-            document.getElementById("game-over-screen").style.display = "flex";
-        }
+        if (hp <= 0) { hp = 0; isEnded = true; document.getElementById("game-over").style.display = "flex"; }
 
-        // UI更新
         document.getElementById("hp-fill").style.width = (hp / 20 * 100) + "%";
         document.getElementById("hp-text").innerText = `${Math.ceil(hp)}/20`;
     }
@@ -151,10 +148,10 @@
         ctx.fillStyle = "#0f0"; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
         ctx.fillStyle = "white"; obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
         blasters.forEach(b => {
-            if (b.state === 'warning') { ctx.strokeStyle = b.color === 'cyan' ? "#0ff" : "red"; ctx.setLineDash([5,5]); ctx.strokeRect(0, b.y, 500, b.h); }
-            else { ctx.fillStyle = b.color === 'cyan' ? "#0ff" : "white"; ctx.setLineDash([]); ctx.fillRect(0, b.y, 500, b.h); }
+            if (b.state === 'warning') { ctx.strokeStyle = "red"; ctx.setLineDash([5,5]); ctx.strokeRect(0, b.y, 500, b.h); }
+            else { ctx.fillStyle = "white"; ctx.setLineDash([]); ctx.fillRect(0, b.y, 500, b.h); }
         });
-        if (!isGameOver) {
+        if (!isEnded || timeLeft <= 0) {
             ctx.fillStyle = "#2e51ff"; ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
         }
         requestAnimationFrame(() => { update(); draw(); });
