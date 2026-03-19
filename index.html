@@ -2,18 +2,19 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - Better Jump</title>
+    <title>Undertale Clone - Dynamic Levels</title>
     <style>
         body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
         #game-container { width: 640px; }
-        #enemy-container { height: 120px; display: flex; justify-content: center; align-items: flex-end; }
-        #enemy-sprite { font-size: 60px; }
-        #main-box { border: 4px solid white; height: 240px; width: 500px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
+        #enemy-container { height: 140px; display: flex; justify-content: center; align-items: flex-end; position: relative; }
+        #enemy-sprite { font-size: 80px; transition: transform 0.1s; }
+        #main-box { border: 4px solid white; height: 260px; width: 500px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
         canvas { background: black; display: block; }
-        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: center; }
-        #hp-bar { width: 120px; height: 20px; background: red; margin: 0 15px; border: 2px solid white; }
+        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 50px; }
+        #hp-bar { width: 100px; height: 20px; background: red; border: 2px solid white; }
         #hp-fill { height: 100%; background: #ff0; width: 100%; }
-        .msg { font-size: 16px; color: #aaa; text-align: center; margin-top: 10px; }
+        .phase-text { color: #0cf; font-weight: bold; }
+        #msg { text-align: center; color: #aaa; margin-top: 10px; height: 20px; }
     </style>
 </head>
 <body>
@@ -22,44 +23,43 @@
     <div id="enemy-container"><div id="enemy-sprite">💀</div></div>
     <div id="main-box"><canvas id="gameCanvas"></canvas></div>
     <div id="ui">
-        <span>LV 1</span>
-        <div id="hp-bar"><div id="hp-fill"></div></div>
-        <span id="hp-text">20 / 20</span>
+        <span class="phase-text" id="phase-display">PHASE 1</span>
+        <div style="display:flex; align-items:center;">
+            <span>HP</span>
+            <div id="hp-bar"><div id="hp-fill"></div></div>
+            <span id="hp-text" style="margin-left:10px">20/20</span>
+        </div>
     </div>
-    <p class="msg">* Jump higher by holding the UP key!</p>
+    <p id="msg">* Stay determined.</p>
 </div>
 
 <script>
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
-    canvas.width = 500; canvas.height = 240;
-
-    const hpFill = document.getElementById("hp-fill");
-    const hpText = document.getElementById("hp-text");
+    canvas.width = 500; canvas.height = 260;
 
     let hp = 20;
-    const maxHp = 20;
     let frame = 0;
+    let phase = 1;
     const keys = {};
 
-    // --- 調整ポイント：ジャンプ力をアップ (-5.5 → -7.5) ---
+    // ジャンプ力と制御を大幅に強化
     const heart = { 
-        x: 242, y: 200, size: 16, 
+        x: 242, y: 220, size: 16, 
         vx: 0, vy: 0, 
         speed: 4.5, 
-        gravity: 0.22, // 少し重力を軽くして「ふんわり」
-        jump: -7.5,    // 最大ジャンプ力を強化
+        gravity: 0.22, 
+        jump: -8.0, 
         onGround: false 
     };
 
-    // --- 調整ポイント：乗りやすい階段状の足場配置 ---
-    let platforms = [
-        { x: 50, y: 170, w: 140, h: 12, vx: 1 },  // 低めの足場
-        { x: 300, y: 110, w: 140, h: 12, vx: -1 } // 中層の足場
-    ];
-
     let obstacles = [];
     let blasters = [];
+    // 足場を階段状に配置
+    let platforms = [
+        { x: 50, y: 180, w: 120, h: 10, vx: 1 },
+        { x: 300, y: 120, w: 120, h: 10, vx: -1 }
+    ];
 
     window.addEventListener("keydown", e => keys[e.code] = true);
     window.addEventListener("keyup", e => keys[e.code] = false);
@@ -67,68 +67,94 @@
     function update() {
         frame++;
 
-        // 左右移動
+        // フェーズ管理（400フレームごとにアップ）
+        if (frame > 0 && frame % 400 === 0 && phase < 4) {
+            phase++;
+            document.getElementById("phase-display").innerText = `PHASE ${phase}`;
+            document.getElementById("msg").innerText = phase === 4 ? "* NO ESCAPE." : "* Things are getting intense.";
+        }
+
+        // キャラアニメ
+        document.getElementById("enemy-sprite").style.transform = `translateY(${Math.sin(frame*0.05)*10}px)`;
+
+        // ハート移動
         if (keys["ArrowLeft"]) heart.x -= heart.speed;
         if (keys["ArrowRight"]) heart.x += heart.speed;
-
-        // 重力
         heart.vy += heart.gravity;
         heart.y += heart.vy;
         heart.onGround = false;
 
-        // 地面判定
-        if (heart.y > canvas.height - heart.size) {
-            heart.y = canvas.height - heart.size;
-            heart.vy = 0;
-            heart.onGround = true;
-        }
+        if (heart.y > canvas.height - heart.size) { heart.y = canvas.height - heart.size; heart.vy = 0; heart.onGround = true; }
 
-        // 足場判定
         platforms.forEach(p => {
             p.x += p.vx;
             if (p.x < 0 || p.x + p.w > canvas.width) p.vx *= -1;
-            
-            // 足場に乗る判定を少し広めに (12 → 15)
-            if (heart.vy >= 0 && heart.x + heart.size > p.x && heart.x < p.x + p.w && heart.y + heart.size >= p.y && heart.y + heart.size <= p.y + 15) {
-                heart.y = p.y - heart.size;
-                heart.vy = 0;
-                heart.onGround = true;
-                heart.x += p.vx;
+            if (heart.vy >= 0 && heart.x + heart.size > p.x && heart.x < p.x + p.w && heart.y + heart.size >= p.y && heart.y + heart.size <= p.y + 12) {
+                heart.y = p.y - heart.size; heart.vy = 0; heart.onGround = true; heart.x += p.vx;
             }
         });
 
-        // --- 調整ポイント：可変ジャンプ ---
-        // 上キーを押し続けている間は高く、離すと上昇が止まる（本家と同じ仕様）
-        if (keys["ArrowUp"] && heart.onGround) {
-            heart.vy = heart.jump;
-        }
-        if (!keys["ArrowUp"] && heart.vy < -2) {
-            heart.vy = -2; // キーを離すと上昇を強制的に弱める
-        }
+        // 強化ジャンプ
+        if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
+        if (!keys["ArrowUp"] && heart.vy < -3) heart.vy = -3; // 離すとふわっと止まる
 
         heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
 
-        // 攻撃の頻度をさらに下げて練習しやすく
-        if (frame % 160 === 0) obstacles.push({ x: 500, y: 200, w: 20, h: 40, vx: -2.5 });
+        // --- PHASEごとの攻撃パターン ---
+        
+        // PHASE 1: 基本のゆっくりな骨
+        if (frame % 100 === 0) {
+            obstacles.push({ x: 500, y: 210, w: 20, h: 50, vx: -3 });
+        }
 
+        // PHASE 2: 上下からの挟み撃ち
+        if (phase >= 2 && frame % 120 === 60) {
+            obstacles.push({ x: 500, y: 0, w: 20, h: 80, vx: -4 });
+        }
+
+        // PHASE 3: ブラスター予告
+        if (phase >= 3 && frame % 180 === 0) {
+            blasters.push({ x: 0, y: Math.random()*180, w: 500, h: 35, warning: 45, active: 15, state: 'warning' });
+        }
+
+        // PHASE 4: 高速弾幕モード
+        if (phase >= 4 && frame % 50 === 0) {
+            obstacles.push({ x: 500, y: 190, w: 15, h: 30, vx: -6 });
+        }
+
+        // 衝突判定
         obstacles.forEach((o, i) => {
             o.x += o.vx;
-            if (Math.abs(heart.x - o.x) < 15 && Math.abs(heart.y - o.y) < 30) hp = Math.max(0, hp - 1);
+            if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) {
+                hp = Math.max(0, hp - 0.2); // ダメージは優しめ
+            }
             if (o.x < -30) obstacles.splice(i, 1);
         });
 
-        hpFill.style.width = (hp / maxHp * 100) + "%";
-        hpText.innerText = `${Math.ceil(hp)} / ${maxHp}`;
+        blasters.forEach((b, i) => {
+            if (b.state === 'warning') {
+                if (--b.warning <= 0) b.state = 'active';
+            } else {
+                if (--b.active <= 0) blasters.splice(i, 1);
+                else if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp = Math.max(0, hp - 0.5);
+            }
+        });
+
+        // UI
+        document.getElementById("hp-fill").style.width = (hp / 20 * 100) + "%";
+        document.getElementById("hp-text").innerText = `${Math.ceil(hp)}/20`;
+        if (hp <= 0) location.reload();
     }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.fillStyle = "#00ff00"; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
+        ctx.fillStyle = "#0f0"; platforms.forEach(p => ctx.fillRect(p.x, p.y, p.w, p.h));
         ctx.fillStyle = "white"; obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
-        
-        ctx.fillStyle = "#2e51ff";
-        ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
-
+        blasters.forEach(b => {
+            if (b.state === 'warning') { ctx.strokeStyle = "red"; ctx.setLineDash([5,5]); ctx.strokeRect(0, b.y, 500, b.h); }
+            else { ctx.fillStyle = "white"; ctx.setLineDash([]); ctx.fillRect(0, b.y, 500, b.h); }
+        });
+        ctx.fillStyle = "#2e51ff"; ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
         requestAnimationFrame(() => { update(); draw(); });
     }
     draw();
