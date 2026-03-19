@@ -2,16 +2,17 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale - Impossible Mode</title>
+    <title>Undertale Clone - Level Up Edition</title>
     <style>
         body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
         #game-container { width: 640px; }
         #main-box { border: 4px solid white; height: 240px; width: 600px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
         canvas { background: black; display: block; }
-        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; }
-        #hp-bar { width: 100px; height: 20px; background: red; margin: 0 15px; position: relative; }
+        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; font-weight: bold; }
+        #hp-bar { width: 100px; height: 20px; background: red; margin: 0 15px; position: relative; border: 1px solid #fff; }
         #hp-fill { height: 100%; background: #ff0; width: 100%; transition: width 0.1s; }
-        .msg { font-size: 20px; color: #ff0; text-align: center; margin-top: 10px; }
+        .level-badge { color: #0cf; margin-left: 20px; }
+        .msg { font-size: 20px; color: #fff; text-align: center; margin-top: 10px; height: 30px; }
     </style>
 </head>
 <body>
@@ -21,12 +22,13 @@
         <canvas id="gameCanvas"></canvas>
     </div>
     <div id="ui">
-        <span>PLAYER</span><span style="margin-left:20px">LV 19</span>
+        <span>PLAYER</span>
+        <span class="level-badge" id="level-text">LEVEL 1</span>
         <span style="margin-left:auto">HP</span>
         <div id="hp-bar"><div id="hp-fill"></div></div>
         <span id="hp-text">20 / 20</span>
     </div>
-    <p class="msg">* You feel like you're going to have a bad time.</p>
+    <p id="status-msg" class="msg">* The battle begins.</p>
 </div>
 
 <script>
@@ -36,155 +38,159 @@
 
     const hpFill = document.getElementById("hp-fill");
     const hpText = document.getElementById("hp-text");
+    const levelDisplay = document.getElementById("level-text");
+    const statusMsg = document.getElementById("status-msg");
 
     let hp = 20;
     let frame = 0;
+    let currentLevel = 1;
     const keys = {};
 
-    // ハート（青い心臓）の物理
+    // ハート物理
     const heart = {
         x: 300, y: 200, size: 16,
         vx: 0, vy: 0,
         speed: 4.5,
-        gravity: 0.3,
-        jump: -6.5,
+        gravity: 0.25,
+        jump: -6.0,
         onGround: false
     };
 
-    let obstacles = []; // 骨
-    let blasters = []; // ブラスター
-    let particles = []; // エフェクト
+    let obstacles = [];
+    let blasters = [];
 
     window.addEventListener("keydown", e => keys[e.code] = true);
     window.addEventListener("keyup", e => keys[e.code] = false);
 
+    function updateLevel() {
+        // 500フレームごとにレベルアップ（約8秒）
+        if (frame > 0 && frame % 500 === 0 && currentLevel < 5) {
+            currentLevel++;
+            levelDisplay.innerText = `LEVEL ${currentLevel}`;
+            
+            // レベルアップ時の演出
+            if (currentLevel === 2) statusMsg.innerText = "* Gravity is increasing...";
+            if (currentLevel === 3) statusMsg.innerText = "* The bones are getting faster!";
+            if (currentLevel === 4) statusMsg.innerText = "* BLASTERS INCOMING!!";
+            if (currentLevel === 5) {
+                statusMsg.innerText = "* THIS IS THE END.";
+                statusMsg.style.color = "red";
+            }
+        }
+    }
+
     function spawnAttack() {
-        // パターン1: 高速で流れる骨（ジャンプ必須）
-        if (frame % 45 === 0) {
-            obstacles.push({ x: 600, y: 190, w: 20, h: 50, vx: -6, type: 'bone' });
+        // LEVEL 1: 基本の骨（ゆっくり）
+        if (frame % 60 === 0) {
+            const speed = -(3 + currentLevel); // レベルに応じて速度アップ
+            obstacles.push({ x: 600, y: 190, w: 15, h: 50, vx: speed, type: 'bone' });
         }
 
-        // パターン2: 天井からのトゲ
-        if (frame % 80 === 0) {
-            obstacles.push({ x: 600, y: 0, w: 20, h: 60, vx: -4, type: 'bone' });
+        // LEVEL 2以上: 天井からの骨も追加
+        if (currentLevel >= 2 && frame % 90 === 45) {
+            obstacles.push({ x: 600, y: 0, w: 15, h: 70, vx: -(2 + currentLevel), type: 'bone' });
         }
 
-        // パターン3: 追尾型ガスターブラスター
-        if (frame % 120 === 0) {
+        // LEVEL 3以上: 重力強化
+        if (currentLevel >= 3) {
+            heart.gravity = 0.35;
+            heart.jump = -7.5;
+        }
+
+        // LEVEL 4以上: ブラスター出現
+        if (currentLevel >= 4 && frame % 100 === 0) {
             blasters.push({
-                x: heart.x, y: Math.random() * 180, 
-                w: 600, h: 40, 
-                warning: 35, // 予告時間
-                active: 15,  // 発射時間
-                state: 'warning'
+                x: 0, y: Math.random() * 160, 
+                w: 600, h: 35, 
+                warning: 30, active: 10, state: 'warning'
             });
+        }
+
+        // LEVEL 5: 地獄モード（全同時攻撃 ＋ 弾幕高密度化）
+        if (currentLevel === 5 && frame % 30 === 0) {
+             obstacles.push({ x: 0, y: 190, w: 15, h: 40, vx: 5, type: 'bone' }); // 逆方向からも！
         }
     }
 
     function update() {
         frame++;
+        updateLevel();
 
-        // 左右移動
+        // ハート移動
         if (keys["ArrowLeft"]) heart.x -= heart.speed;
         if (keys["ArrowRight"]) heart.x += heart.speed;
-
-        // 重力演算
         heart.vy += heart.gravity;
         heart.y += heart.vy;
 
-        // 地面と天井の衝突
         if (heart.y > canvas.height - heart.size) {
-            heart.y = canvas.height - heart.size;
-            heart.vy = 0;
-            heart.onGround = true;
-        } else {
-            heart.onGround = false;
-        }
-        if (heart.y < 0) { heart.y = 0; heart.vy = 0; }
+            heart.y = canvas.height - heart.size; heart.vy = 0; heart.onGround = true;
+        } else { heart.onGround = false; }
+        
+        if (keys["ArrowUp"] && heart.onGround) heart.vy = heart.jump;
+        if (!keys["ArrowUp"] && heart.vy < 0) heart.vy *= 0.8;
 
-        // ジャンプ（青い心臓）
-        if (keys["ArrowUp"] && heart.onGround) {
-            heart.vy = heart.jump;
-        }
-        // 可変ジャンプ制御（キーを離すと上昇停止）
-        if (!keys["ArrowUp"] && heart.vy < 0) {
-            heart.vy *= 0.85;
-        }
-
-        // 画面端制限
         heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
 
-        // 攻撃の更新
         spawnAttack();
 
+        // 衝突判定：骨
         obstacles.forEach((o, i) => {
             o.x += o.vx;
-            // 衝突判定
             if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) {
-                takeDamage(0.5);
+                hp -= 0.2;
             }
-            if (o.x < -50) obstacles.splice(i, 1);
+            if (o.x < -100 || o.x > 700) obstacles.splice(i, 1);
         });
 
+        // 衝突判定：ブラスター
         blasters.forEach((b, i) => {
             if (b.state === 'warning') {
                 b.warning--;
                 if (b.warning <= 0) b.state = 'active';
             } else {
                 b.active--;
-                // ビームの衝突判定
-                if (heart.y + heart.size > b.y && heart.y < b.y + b.h) {
-                    takeDamage(1);
-                }
-                if (b.active <= 0) blasters.splice(i, 1);
+                if (heart.y + heart.size > b.y && heart.y < b.y + b.h) hp -= 0.6;
+                if (b.active <= 0) blasters.splice(i, i);
             }
         });
 
-        // UI更新
+        // UI
         hpFill.style.width = (hp / 20 * 100) + "%";
         hpText.innerText = `${Math.ceil(hp)} / 20`;
 
         if (hp <= 0) {
-            alert("GAME OVER. STAY DETERMINED...");
+            alert("GAME OVER. RESTARTING AT LEVEL 1...");
             location.reload();
         }
-    }
-
-    function takeDamage(amt) {
-        hp -= amt;
-        // ダメージ時に画面を揺らすなどの演出をここに追加可能
     }
 
     function draw() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // 障害物（骨）
+        // 骨
         ctx.fillStyle = "white";
         obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
 
         // ブラスター
         blasters.forEach(b => {
             if (b.state === 'warning') {
-                ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-                ctx.lineWidth = 2;
+                ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
+                ctx.setLineDash([5, 5]);
                 ctx.strokeRect(0, b.y, 600, b.h);
+                ctx.setLineDash([]);
             } else {
                 ctx.fillStyle = "white";
                 ctx.fillRect(0, b.y, 600, b.h);
-                // 内側の青い光
-                ctx.fillStyle = "#0ff";
-                ctx.fillRect(0, b.y + 10, 600, b.h - 20);
+                ctx.fillStyle = "#4af";
+                ctx.fillRect(0, b.y + 5, 600, b.h - 10);
             }
         });
 
-        // ハート（青い心臓）
+        // 青い心臓
         ctx.fillStyle = "#2e51ff";
         ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
 
-        requestAnimationFrame(() => {
-            update();
-            draw();
-        });
+        requestAnimationFrame(() => { update(); draw(); });
     }
 
     draw();
