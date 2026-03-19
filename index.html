@@ -1,119 +1,196 @@
-import pygame
-import sys
-import random
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Undertale Clone - GitHub Edition</title>
+    <style>
+        /* style.css の内容をここに直接記述 */
+        body {
+            background-color: black;
+            color: white;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            overflow: hidden; /* スクロールバーを非表示にする */
+        }
 
-# --- 設定 ---
-WIDTH, HEIGHT = 640, 480
-FPS = 60
-WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
-RED   = (255, 0, 0)
-YELLOW = (255, 255, 0)
+        #game-container {
+            width: 640px;
+            display: flex;
+            flex-direction: column; /* 縦並びにする */
+            align-items: center; /* 中央寄せ */
+        }
 
-pygame.init()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Undertale-like Engine")
-clock = pygame.time.Clock()
-font = pygame.font.SysFont("arial", 24)
+        #dialogue-box {
+            border: 3px solid white;
+            padding: 20px;
+            height: 100px;
+            width: calc(100% - 46px); /* paddingとborderを考慮 */
+            margin-bottom: 20px;
+            font-size: 24px;
+            box-sizing: border-box; /* paddingとborderを幅に含める */
+            display: flex;
+            align-items: center; /* 縦方向中央寄せ */
+        }
 
-# --- クラス定義 ---
+        #battle-area {
+            display: flex;
+            justify-content: center;
+        }
 
-class Heart:
-    """プレイヤーが操作する魂（赤）"""
-    def __init__(self):
-        self.rect = pygame.Rect(WIDTH//2, HEIGHT//2 + 50, 16, 16)
-        self.speed = 4
+        canvas {
+            border: 3px solid white;
+            background: black;
+        }
 
-    def update(self, boundary):
-        keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] and self.rect.left > boundary.left:
-            self.rect.x -= self.speed
-        if keys[pygame.K_RIGHT] and self.rect.right < boundary.right:
-            self.rect.x += self.speed
-        if keys[pygame.K_UP] and self.rect.top > boundary.top:
-            self.rect.y -= self.speed
-        if keys[pygame.K_DOWN] and self.rect.bottom < boundary.bottom:
-            self.rect.y += self.speed
+        #ui-area {
+            margin-top: 20px;
+            font-size: 24px;
+            display: flex;
+            align-items: center;
+            width: 100%; /* 親の幅に合わせる */
+        }
 
-    def draw(self):
-        pygame.draw.rect(screen, RED, self.rect)
+        #hp-label {
+            margin-right: 10px;
+        }
 
-class Bullet:
-    """敵が放つ弾幕"""
-    def __init__(self, boundary):
-        self.rect = pygame.Rect(random.randint(boundary.left, boundary.right), boundary.top - 20, 10, 10)
-        self.speed = random.randint(3, 6)
+        #hp-bar-bg {
+            width: 100px;
+            height: 20px;
+            background: red;
+            margin: 0 15px;
+            border: 1px solid white; /* HPバーに枠線を追加 */
+        }
 
-    def update(self):
-        self.rect.y += self.speed
+        #hp-bar-fg {
+            width: 100%; /* JavaScriptで変更される */
+            height: 100%;
+            background: yellow;
+        }
 
-    def draw(self):
-        pygame.draw.ellipse(screen, WHITE, self.rect)
+        #player-name {
+            margin-right: auto; /* 左寄せ */
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="dialogue-box">
+            <p id="typewriter-text"></p>
+        </div>
+        <div id="battle-area">
+            <canvas id="gameCanvas"></canvas>
+        </div>
+        <div id="ui-area">
+            <span id="player-name">HUMAN</span>
+            <span id="hp-label">HP</span>
+            <div id="hp-bar-bg"><div id="hp-bar-fg"></div></div>
+            <span id="hp-text">20 / 20</span>
+        </div>
+    </div>
 
-# --- メインループ ---
+    <script>
+        // script.js の内容をここに直接記述
 
-def main():
-    heart = Heart()
-    bullets = []
-    
-    # バトルボックス（枠）の定義
-    box_rect = pygame.Rect(WIDTH//2 - 100, HEIGHT//2, 200, 150)
-    
-    dialogue_text = "* A mysterious AI blocks your way."
-    hp = 20
-    frame_count = 0
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        canvas.width = 400;
+        canvas.height = 200;
 
-    while True:
-        screen.fill(BLACK)
-        
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+        // プレイヤー設定
+        const heart = { x: 190, y: 140, size: 16, speed: 4 };
+        let hp = 20;
+        const maxHp = 20; // 最大HPも定義
 
-        # 1. 弾幕の生成（時間経過で追加）
-        frame_count += 1
-        if frame_count % 20 == 0:
-            bullets.append(Bullet(box_rect))
+        // 弾の設定
+        let bullets = [];
+        let frames = 0;
 
-        # 2. アップデート
-        heart.update(box_rect)
-        for b in bullets[:]:
-            b.update()
-            # 当たり判定
-            if heart.rect.colliderect(b.rect):
-                hp -= 1
-                bullets.remove(b)
-            # 画面外で削除
-            elif b.rect.top > box_rect.bottom:
-                bullets.remove(b)
+        // タイピング演出
+        const dialogueElement = document.getElementById("typewriter-text");
+        const fullText = "* A mysterious force blocks your way. Dodge the incoming attacks!";
+        let currentDisplayedText = "";
+        let textIndex = 0;
+        let typingDone = false; // タイピングが完了したかどうかのフラグ
 
-        # 3. 描画
-        # モンスター（簡易的な形）
-        pygame.draw.polygon(screen, WHITE, [(320, 50), (280, 150), (360, 150)])
-        
-        # テキスト表示
-        text_surface = font.render(dialogue_text, True, WHITE)
-        screen.blit(text_surface, (50, 200))
+        function typeWriter() {
+            if (textIndex < fullText.length) {
+                currentDisplayedText += fullText.charAt(textIndex);
+                dialogueElement.innerHTML = currentDisplayedText;
+                textIndex++;
+                setTimeout(typeWriter, 50); // 1文字表示にかかる時間
+            } else {
+                typingDone = true; // タイピング完了
+            }
+        }
 
-        # HP表示
-        hp_text = font.render(f"HP: {hp} / 20", True, WHITE)
-        screen.blit(hp_text, (WIDTH//2 - 50, HEIGHT - 50))
+        // キー入力管理
+        const keys = {};
+        window.addEventListener("keydown", e => keys[e.code] = true);
+        window.addEventListener("keyup", e => keys[e.code] = false);
 
-        # バトルボックス
-        pygame.draw.rect(screen, WHITE, box_rect, 3)
+        function update() {
+            // ハート移動
+            if (keys["ArrowLeft"] && heart.x > 0) heart.x -= heart.speed;
+            if (keys["ArrowRight"] && heart.x < canvas.width - heart.size) heart.x += heart.speed;
+            if (keys["ArrowUp"] && heart.y > 0) heart.y -= heart.speed;
+            if (keys["ArrowDown"] && heart.y < canvas.height - heart.size) heart.y += heart.speed;
 
-        # プレイヤーと弾
-        heart.draw()
-        for b in bullets:
-            b.draw()
+            // 弾の生成 (タイピング完了後に弾を生成し始める)
+            if (typingDone) {
+                frames++;
+                if (frames % 20 === 0) { // 20フレームごとに弾を生成
+                    bullets.push({ x: Math.random() * canvas.width, y: -20, size: 10, speed: 3 });
+                }
+            }
 
-        if hp <= 0:
-            print("GAME OVER")
-            break
+            // 弾の移動と判定
+            bullets.forEach((b, index) => {
+                b.y += b.speed;
+                // 当たり判定 (矩形と矩形の衝突判定)
+                if (heart.x < b.x + b.size && heart.x + heart.size > b.x &&
+                    heart.y < b.y + b.size && heart.y + heart.size > b.y) {
+                    hp -= 1;
+                    bullets.splice(index, 1); // 弾を削除
+                    document.getElementById("hp-bar-fg").style.width = (hp / maxHp * 100) + "%";
+                    document.getElementById("hp-text").innerText = `${hp} / ${maxHp}`;
+                }
+            });
 
-        pygame.display.flip()
-        clock.tick(FPS)
+            // 画面外に出た弾を削除
+            bullets = bullets.filter(b => b.y < canvas.height + 20); // 画面外に出てしばらくしたら消す
 
-if __name__ == "__main__":
-    main()
+            if (hp <= 0) {
+                alert("GAME OVER! Refresh to try again.");
+                location.reload(); // ゲームオーバーでリロード
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // キャンバスをクリア
+            
+            // ハート描画
+            ctx.fillStyle = "red";
+            ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
+
+            // 弾描画
+            ctx.fillStyle = "white";
+            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
+
+            requestAnimationFrame(() => {
+                update();
+                draw();
+            });
+        }
+
+        // ゲーム開始
+        typeWriter(); // まずはタイピング演出から
+        // 弾の生成とゲームループはタイピング完了後に開始される
+        draw(); // 描画ループを開始
+    </script>
+</body>
+</html>
