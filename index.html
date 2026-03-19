@@ -2,202 +2,192 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Style - Dungeon & Battle</title>
+    <title>Undertale - Impossible Mode</title>
     <style>
-        body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; }
-        #game-container { width: 640px; text-align: center; }
-        
-        /* ダンジョン画面とバトル画面の共通枠 */
-        #viewport {
-            width: 600px;
-            height: 400px;
-            border: 4px solid white;
-            position: relative;
-            margin: 0 auto;
-            background: black;
-            overflow: hidden;
-        }
-
-        canvas { display: block; }
-        
-        /* メッセージボックス */
-        #msg-box {
-            width: 600px;
-            height: 100px;
-            border: 4px solid white;
-            margin: 10px auto;
-            padding: 15px;
-            box-sizing: border-box;
-            text-align: left;
-            font-size: 20px;
-        }
-
-        .hidden { display: none; }
+        body { background-color: black; color: white; font-family: 'Courier New', monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
+        #game-container { width: 640px; }
+        #main-box { border: 4px solid white; height: 240px; width: 600px; position: relative; background: black; margin: 0 auto; overflow: hidden; }
+        canvas { background: black; display: block; }
+        #ui { margin-top: 15px; font-size: 24px; display: flex; align-items: center; }
+        #hp-bar { width: 100px; height: 20px; background: red; margin: 0 15px; position: relative; }
+        #hp-fill { height: 100%; background: #ff0; width: 100%; transition: width 0.1s; }
+        .msg { font-size: 20px; color: #ff0; text-align: center; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="viewport">
-        <canvas id="overworldCanvas"></canvas>
-        <canvas id="battleCanvas" class="hidden"></canvas>
+    <div id="main-box">
+        <canvas id="gameCanvas"></canvas>
     </div>
-    
-    <div id="msg-box">
-        <p id="text-display">* Use Arrow Keys to move. Find the red tile!</p>
+    <div id="ui">
+        <span>PLAYER</span><span style="margin-left:20px">LV 19</span>
+        <span style="margin-left:auto">HP</span>
+        <div id="hp-bar"><div id="hp-fill"></div></div>
+        <span id="hp-text">20 / 20</span>
     </div>
+    <p class="msg">* You feel like you're going to have a bad time.</p>
 </div>
 
 <script>
-    const owCanvas = document.getElementById("overworldCanvas");
-    const btCanvas = document.getElementById("battleCanvas");
-    const owCtx = owCanvas.getContext("2d");
-    const btCtx = btCanvas.getContext("2d");
-    const msgText = document.getElementById("text-display");
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    canvas.width = 600; canvas.height = 240;
 
-    // ゲーム状態: "EXPLORE" or "BATTLE"
-    let gameState = "EXPLORE";
+    const hpFill = document.getElementById("hp-fill");
+    const hpText = document.getElementById("hp-text");
 
-    // --- 1. ダンジョン設定 ---
-    const tileSize = 40;
-    const map = [
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-        [1,0,0,0,1,0,0,0,0,0,0,0,0,0,1],
-        [1,0,1,0,1,0,1,1,1,0,1,1,1,0,1],
-        [1,0,1,0,0,0,0,0,1,0,0,0,1,0,1],
-        [1,0,1,1,1,1,1,0,1,1,1,0,1,0,1],
-        [1,0,0,0,0,0,1,0,0,0,1,0,0,0,1],
-        [1,1,1,1,1,0,1,1,1,0,1,1,1,0,1],
-        [1,0,0,0,0,0,0,0,1,0,0,0,0,2,1], // 2はエンカウント床
-        [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-    ];
-
-    const player = { x: 1, y: 1, realX: 40, realY: 40, size: 30 };
+    let hp = 20;
+    let frame = 0;
     const keys = {};
 
-    // --- 2. バトル設定 ---
-    const heart = { x: 0, y: 0, size: 16, vy: 0, gravity: 0.25 };
-    let bullets = [];
-    let battleTimer = 0;
+    // ハート（青い心臓）の物理
+    const heart = {
+        x: 300, y: 200, size: 16,
+        vx: 0, vy: 0,
+        speed: 4.5,
+        gravity: 0.3,
+        jump: -6.5,
+        onGround: false
+    };
+
+    let obstacles = []; // 骨
+    let blasters = []; // ブラスター
+    let particles = []; // エフェクト
 
     window.addEventListener("keydown", e => keys[e.code] = true);
     window.addEventListener("keyup", e => keys[e.code] = false);
 
-    // --- 探索ロジック ---
-    function updateExplore() {
-        let nextX = player.x;
-        let nextY = player.y;
-
-        if (keys["ArrowUp"]) nextY -= 0.1;
-        if (keys["ArrowDown"]) nextY += 0.1;
-        if (keys["ArrowLeft"]) nextX -= 0.1;
-        if (keys["ArrowRight"]) nextX += 0.1;
-
-        // 当たり判定
-        const gridX = Math.round(nextX);
-        const gridY = Math.round(nextY);
-
-        if (map[gridY][gridX] !== 1) {
-            player.x = nextX;
-            player.y = nextY;
+    function spawnAttack() {
+        // パターン1: 高速で流れる骨（ジャンプ必須）
+        if (frame % 45 === 0) {
+            obstacles.push({ x: 600, y: 190, w: 20, h: 50, vx: -6, type: 'bone' });
         }
 
-        // エンカウント判定 (赤い床)
-        if (map[gridY][gridX] === 2) {
-            startBattleTransition();
+        // パターン2: 天井からのトゲ
+        if (frame % 80 === 0) {
+            obstacles.push({ x: 600, y: 0, w: 20, h: 60, vx: -4, type: 'bone' });
+        }
+
+        // パターン3: 追尾型ガスターブラスター
+        if (frame % 120 === 0) {
+            blasters.push({
+                x: heart.x, y: Math.random() * 180, 
+                w: 600, h: 40, 
+                warning: 35, // 予告時間
+                active: 15,  // 発射時間
+                state: 'warning'
+            });
         }
     }
 
-    function drawExplore() {
-        owCanvas.width = 600; owCanvas.height = 400;
-        owCtx.clearRect(0, 0, owCanvas.width, owCanvas.height);
+    function update() {
+        frame++;
 
-        for (let y = 0; y < map.length; y++) {
-            for (let x = 0; x < map[y].length; x++) {
-                if (map[y][x] === 1) owCtx.fillStyle = "#444"; // 壁
-                else if (map[y][x] === 2) owCtx.fillStyle = "#600"; // 敵の気配
-                else owCtx.fillStyle = "#111"; // 床
-                owCtx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+        // 左右移動
+        if (keys["ArrowLeft"]) heart.x -= heart.speed;
+        if (keys["ArrowRight"]) heart.x += heart.speed;
+
+        // 重力演算
+        heart.vy += heart.gravity;
+        heart.y += heart.vy;
+
+        // 地面と天井の衝突
+        if (heart.y > canvas.height - heart.size) {
+            heart.y = canvas.height - heart.size;
+            heart.vy = 0;
+            heart.onGround = true;
+        } else {
+            heart.onGround = false;
+        }
+        if (heart.y < 0) { heart.y = 0; heart.vy = 0; }
+
+        // ジャンプ（青い心臓）
+        if (keys["ArrowUp"] && heart.onGround) {
+            heart.vy = heart.jump;
+        }
+        // 可変ジャンプ制御（キーを離すと上昇停止）
+        if (!keys["ArrowUp"] && heart.vy < 0) {
+            heart.vy *= 0.85;
+        }
+
+        // 画面端制限
+        heart.x = Math.max(0, Math.min(canvas.width - heart.size, heart.x));
+
+        // 攻撃の更新
+        spawnAttack();
+
+        obstacles.forEach((o, i) => {
+            o.x += o.vx;
+            // 衝突判定
+            if (heart.x < o.x + o.w && heart.x + heart.size > o.x && heart.y < o.y + o.h && heart.y + heart.size > o.y) {
+                takeDamage(0.5);
             }
-        }
+            if (o.x < -50) obstacles.splice(i, 1);
+        });
 
-        // プレイヤー描画
-        owCtx.fillStyle = "red";
-        owCtx.fillRect(player.x * tileSize + 5, player.y * tileSize + 5, player.size, player.size);
-    }
-
-    // --- バトル移行 ---
-    function startBattleTransition() {
-        gameState = "TRANSITION";
-        msgText.innerHTML = "* But nobody came... Wait, something IS here!";
-        setTimeout(() => {
-            gameState = "BATTLE";
-            owCanvas.classList.add("hidden");
-            btCanvas.classList.remove("hidden");
-            btCanvas.width = 600; btCanvas.height = 400;
-            heart.x = 300; heart.y = 200;
-            battleTimer = 400;
-        }, 1000);
-    }
-
-    // --- バトルロジック ---
-    function updateBattle() {
-        if (keys["ArrowLeft"] && heart.x > 50) heart.x -= 4;
-        if (keys["ArrowRight"] && heart.x < 550) heart.x += 4;
-        if (keys["ArrowUp"] && heart.y > 200) heart.y -= 4;
-        if (keys["ArrowDown"] && heart.y < 350) heart.y += 4;
-
-        if (battleTimer % 20 === 0) {
-            bullets.push({ x: Math.random() * 600, y: 0, vy: 5 });
-        }
-        bullets.forEach((b, i) => {
-            b.y += b.vy;
-            if (Math.abs(heart.x - b.x) < 15 && Math.abs(heart.y - b.y) < 15) {
-                msgText.innerHTML = "* Ouch! Stay determined!";
+        blasters.forEach((b, i) => {
+            if (b.state === 'warning') {
+                b.warning--;
+                if (b.warning <= 0) b.state = 'active';
+            } else {
+                b.active--;
+                // ビームの衝突判定
+                if (heart.y + heart.size > b.y && heart.y < b.y + b.h) {
+                    takeDamage(1);
+                }
+                if (b.active <= 0) blasters.splice(i, 1);
             }
         });
 
-        battleTimer--;
-        if (battleTimer <= 0) {
-            gameState = "EXPLORE";
-            btCanvas.classList.add("hidden");
-            owCanvas.classList.remove("hidden");
-            player.x = 1; player.y = 1; // スタートに戻る
-            msgText.innerHTML = "* You escaped back to the entrance.";
+        // UI更新
+        hpFill.style.width = (hp / 20 * 100) + "%";
+        hpText.innerText = `${Math.ceil(hp)} / 20`;
+
+        if (hp <= 0) {
+            alert("GAME OVER. STAY DETERMINED...");
+            location.reload();
         }
     }
 
-    function drawBattle() {
-        btCtx.clearRect(0, 0, btCanvas.width, btCanvas.height);
-        
-        // バトル枠
-        btCtx.strokeStyle = "white";
-        btCtx.lineWidth = 4;
-        btCtx.strokeRect(50, 200, 500, 150);
-
-        // ハート
-        btCtx.fillStyle = "red";
-        btCtx.fillRect(heart.x, heart.y, 16, 16);
-
-        // 弾
-        btCtx.fillStyle = "white";
-        bullets.forEach(b => btCtx.fillRect(b.x, b.y, 10, 10));
+    function takeDamage(amt) {
+        hp -= amt;
+        // ダメージ時に画面を揺らすなどの演出をここに追加可能
     }
 
-    // --- メインループ ---
-    function gameLoop() {
-        if (gameState === "EXPLORE") {
-            updateExplore();
-            drawExplore();
-        } else if (gameState === "BATTLE") {
-            updateBattle();
-            drawBattle();
-        }
-        requestAnimationFrame(gameLoop);
+    function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // 障害物（骨）
+        ctx.fillStyle = "white";
+        obstacles.forEach(o => ctx.fillRect(o.x, o.y, o.w, o.h));
+
+        // ブラスター
+        blasters.forEach(b => {
+            if (b.state === 'warning') {
+                ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+                ctx.lineWidth = 2;
+                ctx.strokeRect(0, b.y, 600, b.h);
+            } else {
+                ctx.fillStyle = "white";
+                ctx.fillRect(0, b.y, 600, b.h);
+                // 内側の青い光
+                ctx.fillStyle = "#0ff";
+                ctx.fillRect(0, b.y + 10, 600, b.h - 20);
+            }
+        });
+
+        // ハート（青い心臓）
+        ctx.fillStyle = "#2e51ff";
+        ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
+
+        requestAnimationFrame(() => {
+            update();
+            draw();
+        });
     }
 
-    gameLoop();
+    draw();
 </script>
-
 </body>
 </html>
