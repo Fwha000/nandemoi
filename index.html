@@ -2,88 +2,28 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - Advanced Battle</title>
+    <title>Undertale Clone - Blue Soul Mode</title>
     <style>
-        body {
-            background-color: black;
-            color: white;
-            font-family: 'Courier New', Courier, monospace;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            overflow: hidden;
-            user-select: none;
-        }
-
+        body { background-color: black; color: white; font-family: 'Courier New', Courier, monospace; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; overflow: hidden; user-select: none; }
         #game-container { width: 640px; }
-
-        #monster-sprite {
-            height: 160px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 80px;
-            margin-bottom: 20px;
-            animation: bounce 2s infinite ease-in-out;
-        }
-
-        @keyframes bounce {
-            0%, 100% { transform: translateY(0); }
-            50% { transform: translateY(-10px); }
-        }
-
-        #main-box {
-            border: 4px solid white;
-            padding: 20px;
-            height: 180px;
-            position: relative;
-            background: black;
-            box-sizing: border-box;
-            overflow: hidden;
-        }
-
+        #monster-sprite { height: 160px; display: flex; justify-content: center; align-items: center; font-size: 80px; margin-bottom: 20px; animation: bounce 2s infinite ease-in-out; }
+        @keyframes bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+        #main-box { border: 4px solid white; padding: 20px; height: 180px; position: relative; background: black; box-sizing: border-box; overflow: hidden; }
         #typewriter-text { font-size: 24px; line-height: 1.4; margin: 0; }
-
-        canvas {
-            display: none;
-            position: absolute;
-            top: 0;
-            left: 0;
-        }
-
-        #ui-info {
-            margin: 15px 0;
-            font-size: 24px;
-            display: flex;
-            align-items: center;
-        }
-
+        canvas { display: none; position: absolute; top: 0; left: 0; }
+        #ui-info { margin: 15px 0; font-size: 24px; display: flex; align-items: center; }
         #hp-bar-bg { width: 100px; height: 20px; background: red; margin: 0 15px; }
-        #hp-bar-fg { width: 100%; height: 100%; background: #ffff00; transition: width 0.1s; }
-
+        #hp-bar-fg { width: 100%; height: 100%; background: #ffff00; }
         #button-container { display: flex; justify-content: space-between; margin-top: 10px; }
-        .menu-btn {
-            border: 2px solid #e27d3c;
-            color: #e27d3c;
-            padding: 10px 20px;
-            font-size: 24px;
-            width: 130px;
-            text-align: center;
-        }
-        .menu-btn.active {
-            border-color: #ffff00;
-            color: #ffff00;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M0 0 L20 10 L0 20 Z" fill="red"/></svg>') no-repeat 5px center;
-        }
-        .yellow-text { color: #ffff00 !important; }
+        .menu-btn { border: 2px solid #e27d3c; color: #e27d3c; padding: 10px 20px; font-size: 24px; width: 130px; text-align: center; }
+        .menu-btn.active { border-color: #ffff00; color: #ffff00; background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M0 0 L20 10 L0 20 Z" fill="red"/></svg>') no-repeat 5px center; }
+        .blue-soul { background-color: #003cff !important; } /* 青い心臓の色 */
     </style>
 </head>
 <body>
 
 <div id="game-container">
-    <div id="monster-sprite">💀</div>
+    <div id="monster-sprite">🦴</div>
 
     <div id="main-box">
         <p id="typewriter-text"></p>
@@ -92,7 +32,7 @@
 
     <div id="ui-info">
         <span id="player-name">HUMAN</span>
-        <span style="margin-left: 20px;">LV 19</span>
+        <span style="margin-left: 20px;">LV 1</span>
         <span style="margin-left: auto;">HP</span>
         <div id="hp-bar-bg"><div id="hp-bar-fg"></div></div>
         <span id="hp-text">20 / 20</span>
@@ -116,12 +56,15 @@
     let state = "MENU";
     let selectedBtn = 0;
     let hp = 20;
-    let monsterHP = 100;
-    let monsterMercyCount = 0;
-    let isMonsterYellow = false;
-    let currentWave = 0;
+    let isBlueSoul = false; // 青い心臓フラグ
 
-    const heart = { x: 0, y: 0, size: 16, speed: 4 };
+    // ハートの物理パラメータ
+    const heart = { 
+        x: 0, y: 0, size: 16, speed: 4,
+        vy: 0, gravity: 0.25, jumpPower: -5,
+        onGround: false
+    };
+
     let bullets = [];
     let battleTimer = 0;
 
@@ -131,32 +74,14 @@
         if (state === "MENU") {
             if (e.code === "ArrowLeft") selectedBtn = (selectedBtn + 3) % 4;
             if (e.code === "ArrowRight") selectedBtn = (selectedBtn + 1) % 4;
-            if (e.code === "Z" || e.code === "Enter") handleSelect();
+            if (e.code === "Z" || e.code === "Enter") startDialogue("* You're blue now. That's my attack!");
         }
     });
     window.addEventListener("keyup", e => keys[e.code] = false);
 
-    function handleSelect() {
-        if (selectedBtn === 0) startDialogue("* You attacked... But it missed.");
-        if (selectedBtn === 1) {
-            monsterMercyCount++;
-            if (monsterMercyCount >= 2) isMonsterYellow = true;
-            startDialogue("* You told a joke about skeletons. It's humerus.");
-        }
-        if (selectedBtn === 2) { hp = 20; startDialogue("* You ate the Legendary Hero. HP maxed out!"); }
-        if (selectedBtn === 3) {
-            if (isMonsterYellow) {
-                state = "WON";
-                dialogue.innerHTML = "* YOU WON! YOU GOT 0 EXP AND 0 GOLD.";
-                document.getElementById("monster-sprite").style.opacity = "0.2";
-            } else {
-                startDialogue("* You tried to spare, but the skeleton isn't bored yet.");
-            }
-        }
-    }
-
     function startDialogue(text) {
         state = "DIALOGUE";
+        isBlueSoul = true; // 今回から青い心臓モードへ
         dialogue.innerHTML = "";
         let i = 0;
         const timer = setInterval(() => {
@@ -173,81 +98,82 @@
         dialogue.style.display = "none";
         canvas.style.display = "block";
         canvas.width = 600; canvas.height = 140;
-        heart.x = canvas.width / 2; heart.y = canvas.height / 2;
+        heart.x = canvas.width / 2;
+        heart.y = canvas.height - heart.size;
+        heart.vy = 0;
         bullets = [];
-        battleTimer = 300; // 約5秒間
-        currentWave = Math.floor(Math.random() * 3); // 攻撃パターンをランダムに選択
-    }
-
-    function spawnBullet() {
-        if (currentWave === 0) { // パターン0: ボーン・スライド
-            if (battleTimer % 40 === 0) {
-                const side = Math.random() > 0.5 ? 0 : canvas.width;
-                bullets.push({ x: side, y: canvas.height - 60, w: 20, h: 60, vx: side === 0 ? 5 : -5, vy: 0, type: 'rect' });
-            }
-        } else if (currentWave === 1) { // パターン1: エイム・ショット
-            if (battleTimer % 25 === 0) {
-                const angle = Math.atan2(heart.y - 0, heart.x - (Math.random() * canvas.width));
-                bullets.push({ x: Math.random() * canvas.width, y: -10, w: 12, h: 12, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4, type: 'circle' });
-            }
-        } else { // パターン2: レイン・ストーム
-            if (battleTimer % 10 === 0) {
-                bullets.push({ x: Math.random() * canvas.width, y: -10, w: 10, h: 10, vx: 0, vy: 4 + Math.random() * 4, type: 'circle' });
-            }
-        }
+        battleTimer = 400;
     }
 
     function update() {
         if (state === "MENU") {
-            for (let i = 0; i < 4; i++) {
-                const btn = document.getElementById(`btn-${i}`);
-                btn.classList.toggle("active", i === selectedBtn);
-                if (i === 3 && isMonsterYellow) btn.classList.add("yellow-text");
-            }
+            for (let i = 0; i < 4; i++) document.getElementById(`btn-${i}`).classList.toggle("active", i === selectedBtn);
         }
 
         if (state === "BATTLE") {
+            // 左右移動
             if (keys["ArrowLeft"] && heart.x > 0) heart.x -= heart.speed;
             if (keys["ArrowRight"] && heart.x < canvas.width - heart.size) heart.x += heart.speed;
-            if (keys["ArrowUp"] && heart.y > 0) heart.y -= heart.speed;
-            if (keys["ArrowDown"] && heart.y < canvas.height - heart.size) heart.y += heart.speed;
 
-            spawnBullet();
+            // 重力とジャンプ
+            heart.vy += heart.gravity;
+            heart.y += heart.vy;
+
+            // 地面判定
+            if (heart.y >= canvas.height - heart.size) {
+                heart.y = canvas.height - heart.size;
+                heart.vy = 0;
+                heart.onGround = true;
+            } else {
+                heart.onGround = false;
+            }
+
+            // ジャンプ (上キー)
+            if (keys["ArrowUp"] && heart.onGround) {
+                heart.vy = heart.jumpPower;
+            }
+            // 可変ジャンプ（ボタンを離すと上昇が弱まる）
+            if (!keys["ArrowUp"] && heart.vy < 0) {
+                heart.vy *= 0.8;
+            }
+
+            // 攻撃生成: 地面を滑る骨
+            if (battleTimer % 50 === 0) {
+                bullets.push({ x: canvas.width, y: canvas.height - 40, w: 15, h: 40, vx: -5, vy: 0 });
+            }
 
             bullets.forEach((b, i) => {
-                b.x += b.vx; b.y += b.vy;
-                // 当たり判定
+                b.x += b.vx;
                 if (heart.x < b.x + b.w && heart.x + heart.size > b.x && heart.y < b.y + b.h && heart.y + heart.size > b.y) {
-                    hp = Math.max(0, hp - 0.2);
+                    hp = Math.max(0, hp - 0.1);
                 }
             });
 
             hpBar.style.width = (hp / 20 * 100) + "%";
             hpText.innerText = `${Math.ceil(hp)} / 20`;
             battleTimer--;
-            if (battleTimer <= 0) {
+            if (battleTimer <= 0 || hp <= 0) {
+                if (hp <= 0) location.reload();
                 state = "MENU"; canvas.style.display = "none"; dialogue.style.display = "block";
-                dialogue.innerHTML = "* The skeleton is rattling its bones.";
+                dialogue.innerHTML = "* NYEH HEH HEH!";
             }
-            if (hp <= 0) location.reload();
         }
     }
 
     function draw() {
         if (state === "BATTLE") {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = "red";
+            // ハートの描画（青い心臓）
+            ctx.fillStyle = "#003cff";
             ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
+            // 攻撃の描画
             ctx.fillStyle = "white";
-            bullets.forEach(b => {
-                if (b.type === 'rect') ctx.fillRect(b.x, b.y, b.w, b.h);
-                else { ctx.beginPath(); ctx.arc(b.x, b.y, b.w/2, 0, Math.PI*2); ctx.fill(); }
-            });
+            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.w, b.h));
         }
         requestAnimationFrame(() => { update(); draw(); });
     }
 
-    dialogue.innerHTML = "* You feel your sins crawling on your back.";
+    dialogue.innerHTML = "* Papyrus is busy preparing spaghetti.";
     draw();
 </script>
 </body>
