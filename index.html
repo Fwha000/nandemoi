@@ -2,9 +2,8 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>Undertale Clone - GitHub Edition</title>
+    <title>Undertale Clone - Advanced Battle</title>
     <style>
-        /* style.css の内容をここに直接記述 */
         body {
             background-color: black;
             color: white;
@@ -14,183 +13,242 @@
             align-items: center;
             height: 100vh;
             margin: 0;
-            overflow: hidden; /* スクロールバーを非表示にする */
+            overflow: hidden;
+            user-select: none;
         }
 
-        #game-container {
-            width: 640px;
-            display: flex;
-            flex-direction: column; /* 縦並びにする */
-            align-items: center; /* 中央寄せ */
-        }
+        #game-container { width: 640px; }
 
-        #dialogue-box {
-            border: 3px solid white;
-            padding: 20px;
-            height: 100px;
-            width: calc(100% - 46px); /* paddingとborderを考慮 */
-            margin-bottom: 20px;
-            font-size: 24px;
-            box-sizing: border-box; /* paddingとborderを幅に含める */
-            display: flex;
-            align-items: center; /* 縦方向中央寄せ */
-        }
-
-        #battle-area {
+        #monster-sprite {
+            height: 160px;
             display: flex;
             justify-content: center;
+            align-items: center;
+            font-size: 80px;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite ease-in-out;
         }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        #main-box {
+            border: 4px solid white;
+            padding: 20px;
+            height: 180px;
+            position: relative;
+            background: black;
+            box-sizing: border-box;
+            overflow: hidden;
+        }
+
+        #typewriter-text { font-size: 24px; line-height: 1.4; margin: 0; }
 
         canvas {
-            border: 3px solid white;
-            background: black;
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
         }
 
-        #ui-area {
-            margin-top: 20px;
+        #ui-info {
+            margin: 15px 0;
             font-size: 24px;
             display: flex;
             align-items: center;
-            width: 100%; /* 親の幅に合わせる */
         }
 
-        #hp-label {
-            margin-right: 10px;
-        }
+        #hp-bar-bg { width: 100px; height: 20px; background: red; margin: 0 15px; }
+        #hp-bar-fg { width: 100%; height: 100%; background: #ffff00; transition: width 0.1s; }
 
-        #hp-bar-bg {
-            width: 100px;
-            height: 20px;
-            background: red;
-            margin: 0 15px;
-            border: 1px solid white; /* HPバーに枠線を追加 */
+        #button-container { display: flex; justify-content: space-between; margin-top: 10px; }
+        .menu-btn {
+            border: 2px solid #e27d3c;
+            color: #e27d3c;
+            padding: 10px 20px;
+            font-size: 24px;
+            width: 130px;
+            text-align: center;
         }
-
-        #hp-bar-fg {
-            width: 100%; /* JavaScriptで変更される */
-            height: 100%;
-            background: yellow;
+        .menu-btn.active {
+            border-color: #ffff00;
+            color: #ffff00;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M0 0 L20 10 L0 20 Z" fill="red"/></svg>') no-repeat 5px center;
         }
-
-        #player-name {
-            margin-right: auto; /* 左寄せ */
-        }
+        .yellow-text { color: #ffff00 !important; }
     </style>
 </head>
 <body>
-    <div id="game-container">
-        <div id="dialogue-box">
-            <p id="typewriter-text"></p>
-        </div>
-        <div id="battle-area">
-            <canvas id="gameCanvas"></canvas>
-        </div>
-        <div id="ui-area">
-            <span id="player-name">HUMAN</span>
-            <span id="hp-label">HP</span>
-            <div id="hp-bar-bg"><div id="hp-bar-fg"></div></div>
-            <span id="hp-text">20 / 20</span>
-        </div>
+
+<div id="game-container">
+    <div id="monster-sprite">💀</div>
+
+    <div id="main-box">
+        <p id="typewriter-text"></p>
+        <canvas id="gameCanvas"></canvas>
     </div>
 
-    <script>
-        // script.js の内容をここに直接記述
+    <div id="ui-info">
+        <span id="player-name">HUMAN</span>
+        <span style="margin-left: 20px;">LV 19</span>
+        <span style="margin-left: auto;">HP</span>
+        <div id="hp-bar-bg"><div id="hp-bar-fg"></div></div>
+        <span id="hp-text">20 / 20</span>
+    </div>
 
-        const canvas = document.getElementById("gameCanvas");
-        const ctx = canvas.getContext("2d");
-        canvas.width = 400;
-        canvas.height = 200;
+    <div id="button-container">
+        <div class="menu-btn" id="btn-0">FIGHT</div>
+        <div class="menu-btn" id="btn-1">ACT</div>
+        <div class="menu-btn" id="btn-2">ITEM</div>
+        <div class="menu-btn" id="btn-3">MERCY</div>
+    </div>
+</div>
 
-        // プレイヤー設定
-        const heart = { x: 190, y: 140, size: 16, speed: 4 };
-        let hp = 20;
-        const maxHp = 20; // 最大HPも定義
+<script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const dialogue = document.getElementById("typewriter-text");
+    const hpBar = document.getElementById("hp-bar-fg");
+    const hpText = document.getElementById("hp-text");
 
-        // 弾の設定
-        let bullets = [];
-        let frames = 0;
+    let state = "MENU";
+    let selectedBtn = 0;
+    let hp = 20;
+    let monsterHP = 100;
+    let monsterMercyCount = 0;
+    let isMonsterYellow = false;
+    let currentWave = 0;
 
-        // タイピング演出
-        const dialogueElement = document.getElementById("typewriter-text");
-        const fullText = "* A mysterious force blocks your way. Dodge the incoming attacks!";
-        let currentDisplayedText = "";
-        let textIndex = 0;
-        let typingDone = false; // タイピングが完了したかどうかのフラグ
+    const heart = { x: 0, y: 0, size: 16, speed: 4 };
+    let bullets = [];
+    let battleTimer = 0;
 
-        function typeWriter() {
-            if (textIndex < fullText.length) {
-                currentDisplayedText += fullText.charAt(textIndex);
-                dialogueElement.innerHTML = currentDisplayedText;
-                textIndex++;
-                setTimeout(typeWriter, 50); // 1文字表示にかかる時間
+    const keys = {};
+    window.addEventListener("keydown", e => {
+        keys[e.code] = true;
+        if (state === "MENU") {
+            if (e.code === "ArrowLeft") selectedBtn = (selectedBtn + 3) % 4;
+            if (e.code === "ArrowRight") selectedBtn = (selectedBtn + 1) % 4;
+            if (e.code === "Z" || e.code === "Enter") handleSelect();
+        }
+    });
+    window.addEventListener("keyup", e => keys[e.code] = false);
+
+    function handleSelect() {
+        if (selectedBtn === 0) startDialogue("* You attacked... But it missed.");
+        if (selectedBtn === 1) {
+            monsterMercyCount++;
+            if (monsterMercyCount >= 2) isMonsterYellow = true;
+            startDialogue("* You told a joke about skeletons. It's humerus.");
+        }
+        if (selectedBtn === 2) { hp = 20; startDialogue("* You ate the Legendary Hero. HP maxed out!"); }
+        if (selectedBtn === 3) {
+            if (isMonsterYellow) {
+                state = "WON";
+                dialogue.innerHTML = "* YOU WON! YOU GOT 0 EXP AND 0 GOLD.";
+                document.getElementById("monster-sprite").style.opacity = "0.2";
             } else {
-                typingDone = true; // タイピング完了
+                startDialogue("* You tried to spare, but the skeleton isn't bored yet.");
+            }
+        }
+    }
+
+    function startDialogue(text) {
+        state = "DIALOGUE";
+        dialogue.innerHTML = "";
+        let i = 0;
+        const timer = setInterval(() => {
+            dialogue.innerHTML += text[i]; i++;
+            if (i >= text.length) {
+                clearInterval(timer);
+                setTimeout(startBattle, 800);
+            }
+        }, 30);
+    }
+
+    function startBattle() {
+        state = "BATTLE";
+        dialogue.style.display = "none";
+        canvas.style.display = "block";
+        canvas.width = 600; canvas.height = 140;
+        heart.x = canvas.width / 2; heart.y = canvas.height / 2;
+        bullets = [];
+        battleTimer = 300; // 約5秒間
+        currentWave = Math.floor(Math.random() * 3); // 攻撃パターンをランダムに選択
+    }
+
+    function spawnBullet() {
+        if (currentWave === 0) { // パターン0: ボーン・スライド
+            if (battleTimer % 40 === 0) {
+                const side = Math.random() > 0.5 ? 0 : canvas.width;
+                bullets.push({ x: side, y: canvas.height - 60, w: 20, h: 60, vx: side === 0 ? 5 : -5, vy: 0, type: 'rect' });
+            }
+        } else if (currentWave === 1) { // パターン1: エイム・ショット
+            if (battleTimer % 25 === 0) {
+                const angle = Math.atan2(heart.y - 0, heart.x - (Math.random() * canvas.width));
+                bullets.push({ x: Math.random() * canvas.width, y: -10, w: 12, h: 12, vx: Math.cos(angle) * 4, vy: Math.sin(angle) * 4, type: 'circle' });
+            }
+        } else { // パターン2: レイン・ストーム
+            if (battleTimer % 10 === 0) {
+                bullets.push({ x: Math.random() * canvas.width, y: -10, w: 10, h: 10, vx: 0, vy: 4 + Math.random() * 4, type: 'circle' });
+            }
+        }
+    }
+
+    function update() {
+        if (state === "MENU") {
+            for (let i = 0; i < 4; i++) {
+                const btn = document.getElementById(`btn-${i}`);
+                btn.classList.toggle("active", i === selectedBtn);
+                if (i === 3 && isMonsterYellow) btn.classList.add("yellow-text");
             }
         }
 
-        // キー入力管理
-        const keys = {};
-        window.addEventListener("keydown", e => keys[e.code] = true);
-        window.addEventListener("keyup", e => keys[e.code] = false);
-
-        function update() {
-            // ハート移動
+        if (state === "BATTLE") {
             if (keys["ArrowLeft"] && heart.x > 0) heart.x -= heart.speed;
             if (keys["ArrowRight"] && heart.x < canvas.width - heart.size) heart.x += heart.speed;
             if (keys["ArrowUp"] && heart.y > 0) heart.y -= heart.speed;
             if (keys["ArrowDown"] && heart.y < canvas.height - heart.size) heart.y += heart.speed;
 
-            // 弾の生成 (タイピング完了後に弾を生成し始める)
-            if (typingDone) {
-                frames++;
-                if (frames % 20 === 0) { // 20フレームごとに弾を生成
-                    bullets.push({ x: Math.random() * canvas.width, y: -20, size: 10, speed: 3 });
-                }
-            }
+            spawnBullet();
 
-            // 弾の移動と判定
-            bullets.forEach((b, index) => {
-                b.y += b.speed;
-                // 当たり判定 (矩形と矩形の衝突判定)
-                if (heart.x < b.x + b.size && heart.x + heart.size > b.x &&
-                    heart.y < b.y + b.size && heart.y + heart.size > b.y) {
-                    hp -= 1;
-                    bullets.splice(index, 1); // 弾を削除
-                    document.getElementById("hp-bar-fg").style.width = (hp / maxHp * 100) + "%";
-                    document.getElementById("hp-text").innerText = `${hp} / ${maxHp}`;
+            bullets.forEach((b, i) => {
+                b.x += b.vx; b.y += b.vy;
+                // 当たり判定
+                if (heart.x < b.x + b.w && heart.x + heart.size > b.x && heart.y < b.y + b.h && heart.y + heart.size > b.y) {
+                    hp = Math.max(0, hp - 0.2);
                 }
             });
 
-            // 画面外に出た弾を削除
-            bullets = bullets.filter(b => b.y < canvas.height + 20); // 画面外に出てしばらくしたら消す
-
-            if (hp <= 0) {
-                alert("GAME OVER! Refresh to try again.");
-                location.reload(); // ゲームオーバーでリロード
+            hpBar.style.width = (hp / 20 * 100) + "%";
+            hpText.innerText = `${Math.ceil(hp)} / 20`;
+            battleTimer--;
+            if (battleTimer <= 0) {
+                state = "MENU"; canvas.style.display = "none"; dialogue.style.display = "block";
+                dialogue.innerHTML = "* The skeleton is rattling its bones.";
             }
+            if (hp <= 0) location.reload();
         }
+    }
 
-        function draw() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height); // キャンバスをクリア
-            
-            // ハート描画
+    function draw() {
+        if (state === "BATTLE") {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.fillStyle = "red";
             ctx.fillRect(heart.x, heart.y, heart.size, heart.size);
-
-            // 弾描画
             ctx.fillStyle = "white";
-            bullets.forEach(b => ctx.fillRect(b.x, b.y, b.size, b.size));
-
-            requestAnimationFrame(() => {
-                update();
-                draw();
+            bullets.forEach(b => {
+                if (b.type === 'rect') ctx.fillRect(b.x, b.y, b.w, b.h);
+                else { ctx.beginPath(); ctx.arc(b.x, b.y, b.w/2, 0, Math.PI*2); ctx.fill(); }
             });
         }
+        requestAnimationFrame(() => { update(); draw(); });
+    }
 
-        // ゲーム開始
-        typeWriter(); // まずはタイピング演出から
-        // 弾の生成とゲームループはタイピング完了後に開始される
-        draw(); // 描画ループを開始
-    </script>
+    dialogue.innerHTML = "* You feel your sins crawling on your back.";
+    draw();
+</script>
 </body>
 </html>
